@@ -7,6 +7,7 @@ A data-only MCP server that connects ChatGPT to Splitwise's official API. It sup
 - `list_expenses` (compact, paginated summaries)
 - `get_expense`
 - `create_expense` (equal group split or explicit shares)
+- `update_expense` (complete replacement shares for an existing expense)
 
 The server uses Streamable HTTP at `/mcp`. It also acts as a small OAuth 2.1 authorization bridge: ChatGPT completes PKCE with this server, while this server completes Splitwise OAuth and keeps the Splitwise token out of ChatGPT.
 
