@@ -2,27 +2,25 @@ import express, { type Request, type Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { loadConfig } from "./config.js";
 import { createMcpServer } from "./mcp.js";
-import { installOAuthRoutes } from "./oauth.js";
+import { installOAuthRoutes, openAccessToken } from "./oauth.js";
 import { SplitwiseClient } from "./splitwise.js";
-import { MemoryStore } from "./store.js";
 
 const config = loadConfig();
-const store = new MemoryStore();
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: false }));
-installOAuthRoutes(app, config, store);
+installOAuthRoutes(app, config);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/docs", (_req, res) => res.type("text/plain").send("Splitwise MCP connector. See the project README for usage and privacy details."));
 
 async function mcpHandler(req: Request, res: Response) {
-  store.purge();
   const header = req.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
-  const session = token ? store.sessions.get(token) : undefined;
-  if (!session || session.expiresAt <= Date.now() || session.resource !== config.resource) {
+  let session: ReturnType<typeof openAccessToken> | undefined;
+  try { session = token ? openAccessToken(token, config.sessionSecret) : undefined; } catch { session = undefined; }
+  if (!session || session.resource !== config.resource) {
     const metadata = `${config.publicBaseUrl}/.well-known/oauth-protected-resource`;
     res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${metadata}", scope="splitwise:read splitwise:write"`);
     return res.status(401).json({ error: "unauthorized" });

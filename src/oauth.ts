@@ -1,9 +1,12 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import type { Config } from "./config.js";
-import type { MemoryStore } from "./store.js";
+import { seal, unseal } from "./stateless.js";
 
 type State = { clientId: string; redirectUri: string; state: string; challenge: string; resource: string; scope: string; exp: number };
+export type ClientToken = { kind: "client"; redirectUris: string[]; iat: number; exp: number };
+export type CodeToken = { kind: "code"; redirectUri: string; clientId: string; codeChallenge: string; resource: string; scope: string; splitwiseAccessToken: string; exp: number };
+export type AccessToken = { kind: "access"; splitwiseAccessToken: string; scope: string; resource: string; exp: number };
 const b64 = (value: string) => Buffer.from(value).toString("base64url");
 
 export function signState(value: State, secret: string) {
@@ -28,7 +31,11 @@ function validRedirect(uri: string) {
   return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
 }
 
-export function installOAuthRoutes(app: import("express").Express, config: Config, store: MemoryStore) {
+export function openAccessToken(token: string, secret: string) {
+  return unseal<AccessToken>(token, "access", secret);
+}
+
+export function installOAuthRoutes(app: import("express").Express, config: Config) {
   app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json({
     resource: config.resource,
     authorization_servers: [config.publicBaseUrl],
@@ -53,16 +60,18 @@ export function installOAuthRoutes(app: import("express").Express, config: Confi
     if (!Array.isArray(redirectUris) || !redirectUris.length || !redirectUris.every((x) => typeof x === "string" && validRedirect(x))) {
       return res.status(400).json({ error: "invalid_redirect_uri" });
     }
-    const clientId = store.id(24);
-    store.clients.set(clientId, { clientId, redirectUris, createdAt: Date.now() });
+    const now = Date.now();
+    const clientId = seal<ClientToken>({ kind: "client", redirectUris, iat: now, exp: now + 365 * 24 * 60 * 60_000 }, config.sessionSecret);
     return res.status(201).json({ client_id: clientId, redirect_uris: redirectUris, token_endpoint_auth_method: "none" });
   });
 
   app.get("/authorize", (req: Request, res: Response) => {
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, resource } = req.query;
     const requestedClientId = typeof client_id === "string" ? client_id : "";
-    const client = store.clients.get(requestedClientId);
-    if (!client || typeof redirect_uri !== "string" || !client.redirectUris.includes(redirect_uri)) return res.status(400).send("Invalid OAuth client or redirect URI");
+    let client: ClientToken;
+    try { client = unseal<ClientToken>(requestedClientId, "client", config.sessionSecret); }
+    catch { return res.status(400).send("Invalid OAuth client or redirect URI"); }
+    if (typeof redirect_uri !== "string" || !client.redirectUris.includes(redirect_uri)) return res.status(400).send("Invalid OAuth client or redirect URI");
     if (typeof state !== "string" || typeof code_challenge !== "string" || code_challenge_method !== "S256") return res.status(400).send("PKCE S256 and state are required");
     if (resource !== config.resource) return res.status(400).send("Invalid resource");
     const scope = typeof req.query.scope === "string" ? req.query.scope : "splitwise:read splitwise:write";
@@ -90,8 +99,7 @@ export function installOAuthRoutes(app: import("express").Express, config: Confi
       });
       const upstream = await tokenResponse.json() as { access_token?: string; error?: string };
       if (!tokenResponse.ok || !upstream.access_token) throw new Error(upstream.error ?? "Splitwise token exchange failed");
-      const code = store.id();
-      store.codes.set(code, { redirectUri: state.redirectUri, clientId: state.clientId, codeChallenge: state.challenge, resource: state.resource, scope: state.scope, splitwiseAccessToken: upstream.access_token, expiresAt: Date.now() + 5 * 60_000 });
+      const code = seal<CodeToken>({ kind: "code", redirectUri: state.redirectUri, clientId: state.clientId, codeChallenge: state.challenge, resource: state.resource, scope: state.scope, splitwiseAccessToken: upstream.access_token, exp: Date.now() + 5 * 60_000 }, config.sessionSecret);
       const redirect = new URL(state.redirectUri);
       redirect.searchParams.set("code", code);
       redirect.searchParams.set("state", state.state);
@@ -100,15 +108,14 @@ export function installOAuthRoutes(app: import("express").Express, config: Confi
   });
 
   app.post("/token", (req: Request, res: Response) => {
-    store.purge();
     const { grant_type, code, client_id, redirect_uri, code_verifier, resource } = req.body ?? {};
-    const pending = typeof code === "string" ? store.codes.get(code) : undefined;
+    let pending: CodeToken | undefined;
+    try { pending = typeof code === "string" ? unseal<CodeToken>(code, "code", config.sessionSecret) : undefined; } catch { pending = undefined; }
     if (grant_type !== "authorization_code" || !pending || pending.clientId !== client_id || pending.redirectUri !== redirect_uri || pending.resource !== resource || typeof code_verifier !== "string") return res.status(400).json({ error: "invalid_grant" });
     const challenge = createHash("sha256").update(code_verifier).digest("base64url");
     if (challenge !== pending.codeChallenge) return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
-    store.codes.delete(code);
-    const accessToken = store.id(32);
-    store.sessions.set(accessToken, { splitwiseAccessToken: pending.splitwiseAccessToken, scope: pending.scope, resource: pending.resource, expiresAt: Date.now() + 8 * 60 * 60_000 });
-    return res.json({ access_token: accessToken, token_type: "Bearer", expires_in: 28_800, scope: pending.scope });
+    const lifetimeSeconds = 30 * 24 * 60 * 60;
+    const accessToken = seal<AccessToken>({ kind: "access", splitwiseAccessToken: pending.splitwiseAccessToken, scope: pending.scope, resource: pending.resource, exp: Date.now() + lifetimeSeconds * 1000 }, config.sessionSecret);
+    return res.json({ access_token: accessToken, token_type: "Bearer", expires_in: lifetimeSeconds, scope: pending.scope });
   });
 }

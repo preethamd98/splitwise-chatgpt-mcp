@@ -40,7 +40,7 @@ Required variables:
 | `PUBLIC_BASE_URL` | Public HTTPS origin, without a trailing slash |
 | `SPLITWISE_CLIENT_ID` | Splitwise OAuth app client ID |
 | `SPLITWISE_CLIENT_SECRET` | Splitwise OAuth app secret |
-| `SESSION_SECRET` | Random secret, at least 32 characters, used to sign bridge state |
+| `SESSION_SECRET` | Stable random secret, at least 32 characters, used to authenticate and encrypt OAuth artifacts |
 
 Optional variables: `PORT`, `SPLITWISE_AUTHORIZE_URL`, `SPLITWISE_TOKEN_URL`, and `SPLITWISE_API_BASE_URL`.
 
@@ -57,11 +57,11 @@ docker run --env-file .env -p 3000:3000 splitwise-mcp
 2. It discovers this connector's OAuth metadata at `/.well-known/oauth-authorization-server` and dynamically registers a public client at `/register`.
 3. ChatGPT starts authorization-code + PKCE at `/authorize`, including the MCP `resource` value.
 4. The connector redirects the user to Splitwise and receives the result at `/oauth/splitwise/callback`.
-5. The connector exchanges Splitwise's code server-side, creates a short-lived one-time connector code, and redirects to ChatGPT.
-6. ChatGPT exchanges that code at `/token` using its PKCE verifier. The opaque connector access token maps server-side to the upstream Splitwise token.
-7. Every `/mcp` request validates the opaque token, expiry, scope context, and resource before calling Splitwise.
+5. The connector exchanges Splitwise's code server-side, creates a five-minute encrypted connector code, and redirects to ChatGPT.
+6. ChatGPT exchanges that code at `/token` using its PKCE verifier. The connector returns an authenticated, encrypted access token containing the minimum session context.
+7. Every `/mcp` request decrypts and validates the token, expiry, scope context, and resource before calling Splitwise.
 
-This sample deliberately does not provide refresh tokens. Relinking after the eight-hour connector session is the safest simple behavior for a personal deployment.
+Dynamic client registrations, connector codes, and 30-day access tokens are stateless AES-256-GCM envelopes derived from `SESSION_SECRET`. They survive sleeping, restarts, redeploys, and multiple replicas as long as every instance keeps the same secret. Rotating `SESSION_SECRET` intentionally invalidates every existing registration and connection. This sample does not issue refresh tokens, so relinking is required after 30 days.
 
 ## 4. Test and connect to ChatGPT
 
@@ -87,10 +87,10 @@ Suggested checks:
 
 ## Production notes
 
-The runnable sample stores registered clients, one-time codes, connector sessions, and upstream tokens in memory. A restart logs users out, and multiple replicas will not share sessions. Before a multi-user or multi-instance deployment:
+The runnable server stores no OAuth session state. Before a larger multi-user deployment:
 
-- Replace `MemoryStore` with Redis or an encrypted database and keep one-time code consumption atomic.
-- Encrypt Splitwise tokens at rest with a managed KMS; never log tokens or secrets.
+- Keep `SESSION_SECRET` stable, secret, and identical across replicas. For stronger key management, derive or retrieve the encryption key from a managed KMS; never log tokens or secrets.
+- Stateless authorization codes cannot be marked consumed without storage. PKCE, exact client/redirect/resource binding, authenticated encryption, and the five-minute lifetime limit replay exposure. If strict single-use enforcement is required, add a short-lived shared replay cache keyed by a code identifier.
 - Restrict dynamic-registration redirect URIs to the exact ChatGPT callback URLs shown by the app management page (plus explicitly configured development callbacks).
 - Add rate limiting, structured security logs, secret rotation, a privacy policy, and token revocation/account unlinking.
 - Preserve the `resource` binding, PKCE verification, short code lifetime, and exact redirect-URI matching.
