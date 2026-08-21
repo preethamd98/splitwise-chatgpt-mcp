@@ -8,7 +8,6 @@ export type CreateExpenseInput = {
   cost: string; description: string; details?: string; date?: string; currency_code?: string;
   category_id?: number; group_id: number; split_equally?: boolean; shares?: ExpenseShare[];
 };
-export type UpdateExpenseInput = Omit<CreateExpenseInput, "split_equally"> & { shares: ExpenseShare[] };
 
 export class SplitwiseClient {
   constructor(private readonly accessToken: string, private readonly apiBaseUrl: string) {}
@@ -43,7 +42,7 @@ export class SplitwiseClient {
     return this.request(`get_expenses${query.size ? `?${query}` : ""}`);
   }
 
-  private expenseForm(input: CreateExpenseInput) {
+  async createExpense(input: CreateExpenseInput) {
     const form = new URLSearchParams({ cost: input.cost, description: input.description, group_id: String(input.group_id) });
     for (const key of ["details", "date", "currency_code"] as const) if (input[key] !== undefined) form.set(key, String(input[key]));
     if (input.category_id !== undefined) form.set("category_id", String(input.category_id));
@@ -53,24 +52,11 @@ export class SplitwiseClient {
       form.set(`users__${index}__paid_share`, share.paid_share);
       form.set(`users__${index}__owed_share`, share.owed_share);
     });
-    return form;
-  }
-
-  private ensureExpenseAccepted(result: unknown) {
+    const result = await this.request("create_expense", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
     if (result && typeof result === "object" && "errors" in result) {
       const errors = (result as { errors?: unknown }).errors;
-      if (errors && (Array.isArray(errors) ? errors.length : Object.keys(errors as object).length)) throw new Error("Splitwise rejected the expense change");
+      if (errors && (Array.isArray(errors) ? errors.length : Object.keys(errors as object).length)) throw new Error(`Splitwise rejected expense: ${JSON.stringify(errors)}`);
     }
     return result;
-  }
-
-  async createExpense(input: CreateExpenseInput) {
-    const result = await this.request("create_expense", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: this.expenseForm(input) });
-    return this.ensureExpenseAccepted(result);
-  }
-
-  async updateExpense(id: number, input: UpdateExpenseInput) {
-    const result = await this.request(`update_expense/${id}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: this.expenseForm(input) });
-    return this.ensureExpenseAccepted(result);
   }
 }

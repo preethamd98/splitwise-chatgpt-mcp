@@ -6,6 +6,5 @@ test("normalizes ChatGPT-qualified Splitwise tool names", () => {
   assert.equal(normalizeToolName("splitwise.list_expenses"), "list_expenses");
   assert.equal(normalizeToolName("Splitwise_Stateless.list_expenses"), "list_expenses");
   assert.equal(normalizeToolName("splitwise_stateless.get_expense"), "get_expense");
-  assert.equal(normalizeToolName("Splitwise_Stateless.update_expense"), "update_expense");
   assert.equal(normalizeToolName("other.list_expenses"), "other.list_expenses");
 });
