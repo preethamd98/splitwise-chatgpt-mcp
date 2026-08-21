@@ -13,12 +13,23 @@ export class SplitwiseClient {
   constructor(private readonly accessToken: string, private readonly apiBaseUrl: string) {}
 
   private async request(path: string, init?: RequestInit) {
-    const response = await fetch(`${this.apiBaseUrl}/${path}`, {
-      ...init,
-      headers: { accept: "application/json", authorization: `Bearer ${this.accessToken}`, ...init?.headers },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.apiBaseUrl}/${path}`, {
+        ...init,
+        signal: init?.signal ?? AbortSignal.timeout(20_000),
+        headers: { accept: "application/json", authorization: `Bearer ${this.accessToken}`, ...init?.headers },
+      });
+    } catch (error) {
+      if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) throw new Error("Splitwise API request timed out");
+      throw new Error("Splitwise API request failed");
+    }
     const body = await response.json().catch(() => ({ error: response.statusText }));
-    if (!response.ok) throw new Error(`Splitwise API ${response.status}: ${JSON.stringify(body)}`);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error("Splitwise authorization expired or was revoked; reconnect the plugin");
+      if (response.status === 429) throw new Error("Splitwise rate limit reached; retry later");
+      throw new Error(`Splitwise API request failed with status ${response.status}`);
+    }
     return body;
   }
 

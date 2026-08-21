@@ -2,9 +2,9 @@
 
 A data-only MCP server that connects ChatGPT to Splitwise's official API. It supports:
 
-- `list_groups`
-- `list_friends` (including balances)
-- `list_expenses`
+- `list_groups` (compact, paginated groups and members)
+- `list_friends` (compact, paginated balances)
+- `list_expenses` (compact, paginated summaries)
 - `get_expense`
 - `create_expense` (equal group split or explicit shares)
 
@@ -93,6 +93,7 @@ The runnable server stores no OAuth session state. Before a larger multi-user de
 - Stateless authorization codes cannot be marked consumed without storage. PKCE, exact client/redirect/resource binding, authenticated encryption, and the five-minute lifetime limit replay exposure. If strict single-use enforcement is required, add a short-lived shared replay cache keyed by a code identifier.
 - Restrict dynamic-registration redirect URIs to the exact ChatGPT callback URLs shown by the app management page (plus explicitly configured development callbacks).
 - Add rate limiting, structured security logs, secret rotation, a privacy policy, and token revocation/account unlinking.
+- The service emits privacy-safe structured request and tool telemetry (request ID, tool name, duration, status) without OAuth tokens, arguments, or Splitwise response data.
 - Preserve the `resource` binding, PKCE verification, short code lifetime, and exact redirect-URI matching.
 - Run behind HTTPS. Do not expose this development server directly to the internet.
 
