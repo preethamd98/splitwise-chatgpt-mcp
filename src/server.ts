@@ -27,6 +27,12 @@ async function mcpHandler(req: Request, res: Response) {
   }
   const server = createMcpServer(new SplitwiseClient(session.splitwiseAccessToken, config.splitwiseApiBaseUrl), new Set(session.scope.split(/\s+/).filter(Boolean)));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  // Some ChatGPT connector clients qualify calls with the MCP server name even
+  // though tools/list returns unqualified names. Accept both wire formats while
+  // keeping discovery clean and portable for other MCP clients.
+  if (req.body?.method === "tools/call" && typeof req.body?.params?.name === "string" && req.body.params.name.startsWith("splitwise.")) {
+    req.body.params.name = req.body.params.name.slice("splitwise.".length);
+  }
   res.on("close", () => { void transport.close(); void server.close(); });
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
