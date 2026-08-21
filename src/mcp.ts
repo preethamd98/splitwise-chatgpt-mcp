@@ -88,6 +88,22 @@ export function createMcpServer(client: SplitwiseClient, grantedScopes = new Set
     if (args.shares && (Math.abs((owed ?? 0) - Number(args.cost)) > 0.005 || Math.abs((paid ?? 0) - Number(args.cost)) > 0.005)) throw new Error("Both paid_share and owed_share totals must equal cost");
     return run("create_expense", async () => client.createExpense(args));
   });
+
+  server.registerTool("update_expense", secured({
+    title: "Update an existing Splitwise expense",
+    description: "Use this only after get_expense confirms the exact expense ID and current shares. Updates the existing expense and overwrites every participant share; provide the complete participant list. Paid and owed totals must each equal cost.",
+    inputSchema: {
+      expense_id: z.number().int().positive(), cost: z.string().regex(/^\d+(\.\d{1,2})?$/), description: z.string().min(1).max(255),
+      details: z.string().optional(), date: z.string().datetime().optional(), currency_code: z.string().length(3).default("USD"),
+      category_id: z.number().int().positive().optional(), group_id: z.number().int().min(0), shares: z.array(share).min(2),
+    }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  }, writeSecurity), async ({ expense_id, ...args }) => {
+    requireScope(grantedScopes, "splitwise:write");
+    const owed = args.shares.reduce((sum, x) => sum + Number(x.owed_share), 0);
+    const paid = args.shares.reduce((sum, x) => sum + Number(x.paid_share), 0);
+    if (Math.abs(owed - Number(args.cost)) > 0.005 || Math.abs(paid - Number(args.cost)) > 0.005) throw new Error("Both paid_share and owed_share totals must equal cost");
+    return run("update_expense", async () => client.updateExpense(expense_id, args));
+  });
   return server;
 }
 

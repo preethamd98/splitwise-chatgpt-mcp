@@ -23,7 +23,7 @@ test("MCP discovery and compact read call work end to end", async () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     const listed = await client.listTools();
-    assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), ["create_expense", "get_expense", "list_expenses", "list_friends", "list_groups"]);
+    assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), ["create_expense", "get_expense", "list_expenses", "list_friends", "list_groups", "update_expense"]);
     const groupTool = listed.tools.find((tool) => tool.name === "list_groups");
     const limitSchema = groupTool?.inputSchema.properties?.limit as { default?: number } | undefined;
     assert.equal(limitSchema?.default, 20);
