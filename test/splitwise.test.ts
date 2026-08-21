@@ -31,12 +31,13 @@ test("updateExpense posts the full replacement split to the expense endpoint", a
   };
   try {
     const client = new SplitwiseClient("token", "https://example.test/api");
-    await client.updateExpense(9, { cost: "130.00", description: "Costco Membership", group_id: 0, shares: [
+    await client.updateExpense(9, { cost: "130.00", description: "Costco Membership", shares: [
       { user_id: 1, paid_share: "130.00", owed_share: "65.00" }, { user_id: 2, paid_share: "0.00", owed_share: "65.00" },
     ] });
     const form = new URLSearchParams(capturedBody);
     assert.equal(capturedUrl, "https://example.test/api/update_expense/9");
     assert.equal(form.get("cost"), "130.00");
+    assert.equal(form.has("group_id"), false);
     assert.equal(form.get("users__1__owed_share"), "65.00");
     assert.equal(form.get("users__0__paid_share"), "130.00");
   } finally { globalThis.fetch = originalFetch; }

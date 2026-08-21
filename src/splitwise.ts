@@ -8,7 +8,10 @@ export type CreateExpenseInput = {
   cost: string; description: string; details?: string; date?: string; currency_code?: string;
   category_id?: number; group_id: number; split_equally?: boolean; shares?: ExpenseShare[];
 };
-export type UpdateExpenseInput = Omit<CreateExpenseInput, "split_equally"> & { shares: ExpenseShare[] };
+export type UpdateExpenseInput = {
+  cost: string; description: string; details?: string; date?: string; currency_code?: string;
+  category_id?: number; group_id?: number; shares: ExpenseShare[];
+};
 
 export class SplitwiseClient {
   constructor(private readonly accessToken: string, private readonly apiBaseUrl: string) {}
@@ -43,11 +46,12 @@ export class SplitwiseClient {
     return this.request(`get_expenses${query.size ? `?${query}` : ""}`);
   }
 
-  private expenseForm(input: CreateExpenseInput) {
-    const form = new URLSearchParams({ cost: input.cost, description: input.description, group_id: String(input.group_id) });
+  private expenseForm(input: CreateExpenseInput | UpdateExpenseInput) {
+    const form = new URLSearchParams({ cost: input.cost, description: input.description });
+    if (input.group_id !== undefined) form.set("group_id", String(input.group_id));
     for (const key of ["details", "date", "currency_code"] as const) if (input[key] !== undefined) form.set(key, String(input[key]));
     if (input.category_id !== undefined) form.set("category_id", String(input.category_id));
-    if (input.split_equally) form.set("split_equally", "true");
+    if ("split_equally" in input && input.split_equally) form.set("split_equally", "true");
     input.shares?.forEach((share, index) => {
       form.set(`users__${index}__user_id`, String(share.user_id));
       form.set(`users__${index}__paid_share`, share.paid_share);

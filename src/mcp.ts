@@ -91,11 +91,11 @@ export function createMcpServer(client: SplitwiseClient, grantedScopes = new Set
 
   server.registerTool("update_expense", secured({
     title: "Update an existing Splitwise expense",
-    description: "Use this only after get_expense confirms the exact expense ID and current shares. Updates the existing expense and overwrites every participant share; provide the complete participant list. Paid and owed totals must each equal cost.",
+    description: "Use this only after get_expense confirms the exact expense ID and current shares. Updates the existing expense and overwrites every participant share; provide the complete participant list. Omit group_id to preserve the existing group. Paid and owed totals must each equal cost.",
     inputSchema: {
       expense_id: z.number().int().positive(), cost: z.string().regex(/^\d+(\.\d{1,2})?$/), description: z.string().min(1).max(255),
       details: z.string().optional(), date: z.string().datetime().optional(), currency_code: z.string().length(3).default("USD"),
-      category_id: z.number().int().positive().optional(), group_id: z.number().int().min(0), shares: z.array(share).min(2),
+      category_id: z.number().int().positive().optional(), group_id: z.number().int().min(0).optional(), shares: z.array(share).min(2),
     }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   }, writeSecurity), async ({ expense_id, ...args }) => {
     requireScope(grantedScopes, "splitwise:write");
