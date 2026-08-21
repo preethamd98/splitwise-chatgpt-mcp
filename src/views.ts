@@ -113,7 +113,7 @@ export function summarizeExpenses(response: unknown, page: PageInput) {
 
 export function summarizeExpenseDetails(response: unknown) {
   const root = record(response);
-  const rawExpense = array(root.expenses)[0];
+  const rawExpense = root.expense ?? array(root.expenses)[0];
   if (!rawExpense) return { expense: null };
   const item = record(rawExpense);
   const base = expenseSummary(item);

@@ -49,4 +49,6 @@ test("expense list is compact and full expense details retain comments", () => {
   assert.equal(details.expense?.details, "Full note");
   const comments = details.expense.comments as Array<{ content: string }>;
   assert.equal(comments[0]?.content, "Thanks");
+  const singular = summarizeExpenseDetails({ expense: raw.expenses[0] });
+  assert.equal(singular.expense?.id, 9);
 });
